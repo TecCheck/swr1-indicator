@@ -22,7 +22,7 @@ const GETTEXT_DOMAIN = 'swr1-indicator';
 const LOG_TAG = "[SWR1 Indicator]"
 
 const Clutter = imports.gi.Clutter;
-const { GObject, St, Soup, GLib } = imports.gi;
+const { GObject, St, Soup, GLib, Gio } = imports.gi;
 const ByteArray = imports.byteArray;
 
 const ExtensionUtils = imports.misc.extensionUtils;
@@ -38,7 +38,20 @@ var swrExtensionActive = false
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, _('SWR1 Indicator'));
+        super._init(0.5, _('SWR1 Indicator'));
+
+        // Menu
+        let item1 = new PopupMenu.PopupMenuItem(_('Livestream')/*, "camera-web"*/);
+        item1.connect('activate', () => {
+            Main.notify(_('TODO'));
+        });
+        let item2 = new PopupMenu.PopupMenuItem(_('Website')/*, "network-workgroup"*/);
+        item2.connect('activate', () => {
+            openUrlInBrowser('https://www.swr.de/swr1/bw/uebersicht-swr1-bw-100.html')
+        });
+
+        this.menu.addMenuItem(item1);
+        this.menu.addMenuItem(item2);
 
         // Main indicator box
         this._box = new St.BoxLayout({ 
@@ -61,6 +74,10 @@ class Indicator extends PanelMenu.Button {
         // Requests
         this.rest_auth = "Basic c3dyMS1hbmRyb2lkLXY2LXByb2Q6RDU5YmlLS3hjVE9xZm5wd1k3YVVmM2NJMDNTM0tOQTR1OXNsTGZGOHZscz0="
         this.fetchData();
+    }
+
+    openUrlInBrowser(url) {
+        Gio.app_info_launch_default_for_uri_async(url, null, null, null)
     }
 
     fetchData() {
