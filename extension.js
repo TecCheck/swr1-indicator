@@ -33,36 +33,43 @@ const PopupMenu = imports.ui.popupMenu;
 const Me = ExtensionUtils.getCurrentExtension();
 const _ = ExtensionUtils.gettext;
 
+var swrExtensionActive = false
+
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init() {
         super._init(0.0, _('SWR1 Indicator'));
 
+        // Main indicator box
         this._box = new St.BoxLayout({ 
             style_class: 'panel-status-indicators-box' 
         });
-        this._box.add_style_class_name('appindicator-box');
+        this._box.add_style_class_name('swr1-indicator-box');
         this.add_child(this._box);
 
+        // Indicator icon
         this._icon = new St.Icon({
             icon_name: 'audio-headphones',
             style_class: 'system-status-icon',
         })
-        this._icon.add_style_class_name('appindicator-icon');
-        this._icon.add_style_class_name('status-notifier-icon');
-        this._icon.set_style('padding:0');
+        this._icon.add_style_class_name('swr1-indicator-icon');
         this._box.add_child(this._icon);
 
+        // Indicator text
         this.updateLabel("Läd...");
 
+        // Requests
         this.rest_auth = "Basic c3dyMS1hbmRyb2lkLXY2LXByb2Q6RDU5YmlLS3hjVE9xZm5wd1k3YVVmM2NJMDNTM0tOQTR1OXNsTGZGOHZscz0="
         this.fetchData();
     }
 
     fetchData() {
+        if (!swrExtensionActive)
+            return
+
         var promise = this.loadJsonAsync("https://api.lab.swr.de/radiohub/v2/track/list/swr1bw")
         promise.then(json => this.onDataFetched(json))
-        promise.catch(error => this.onDataFetchError(error))
+            .catch(error => this.onDataFetchError(error));
     }
 
     loadJsonAsync(url) {
@@ -102,17 +109,45 @@ class Indicator extends PanelMenu.Button {
     }
 
     onDataFetched(json) {
-        let label = json.data[0].displayTitle + " - " + json.data[0].displayArtist;
-        this.updateLabel(label); 
+        console.log(LOG_TAG, "Data fetched" /*, json*/);
+        let nowMs = Date.now();
+
+        var i = 0;
+        while(i < json.data.length) {
+            var song = json.data[i];
+
+            if (song.playedAtMs < nowMs) {
+                var label = song.displayTitle;
+                if (song.displayArtist.length > 0)
+                    label = label + " - " + song.displayArtist
+
+                this.updateIcon(song.type);
+                this.updateLabel(label);
+                this.sheduleNextFetch(song);
+                break;
+            }
+            
+            i++;
+        }
     }
 
     onDataFetchError(error) {
         console.error(LOG_TAG, "Data fetch error:\n", error);
     }
 
+    updateIcon(type) {
+        switch(type) {
+            case SwrContentType.Music: this._icon.set_icon_name("audio-headphones"); break;
+            case SwrContentType.News: this._icon.set_icon_name("help-about"); break;
+            case SwrContentType.Weather: this._icon.set_icon_name("weather-clear"); break;
+            case SwrContentType.Traffic: this._icon.set_icon_name("kt-speed-limits"); break;
+            case SwrContentType.Voice: this._icon.set_icon_name("audio-input-microphone"); break;
+            default: this._icon.set_icon_name("audio-headphones");
+        }
+    }
+
     updateLabel(label) {
         if (label) {
-
             if (!this._label || !this._labelBin) {
                 this._labelBin = new St.Bin({
                     y_align: Clutter.ActorAlign.CENTER,
@@ -134,7 +169,37 @@ class Indicator extends PanelMenu.Button {
             delete this._label;
         }
     }
+
+    sheduleNextFetch(song) {
+        console.log(LOG_TAG, "Sheduling next fetch");
+
+        let nowMs = Date.now();
+        let predictedSongEnd = song.playedAtMs + song.durationPlan;
+        let predictedSongTimeLeft = predictedSongEnd - nowMs;
+
+        var timeUntilNextRequest = predictedSongTimeLeft;
+
+        if (song.type != SwrContentType.Music) {
+            timeUntilNextRequest = 5000;
+        } else if (timeUntilNextRequest < 3000) {
+            timeUntilNextRequest = 3000
+            console.log(LOG_TAG, song);
+        } else if (timeUntilNextRequest < 10000) {
+            timeUntilNextRequest = 10000
+        }
+
+        console.log(LOG_TAG, "Time until next request: ", timeUntilNextRequest);
+        setTimeout(() => this.fetchData(), timeUntilNextRequest);
+    }
 });
+
+const SwrContentType = {
+    Music: 'music',
+    News: 'news',
+    Weather: 'weather',
+    Traffic: 'traffic',
+    Voice: 'voice'
+};
 
 class Extension {
     constructor(uuid) {
@@ -143,13 +208,15 @@ class Extension {
     }
 
     enable() {
+        swrExtensionActive = true;
+
         this._indicator = new Indicator();
         Main.panel.addToStatusArea(this._uuid, this._indicator);
-
-        console.log(LOG_TAG, "Soup: ", Soup.get_major_version());
     }
 
     disable() {
+        swrExtensionActive = false;
+
         this._indicator.destroy();
         this._indicator = null;
     }
