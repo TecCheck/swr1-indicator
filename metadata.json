@@ -1,0 +1,8 @@
+{
+  "name": "SWR1 Indicator",
+  "description": "SWR1 BW Radio infos anzeigen",
+  "uuid": "swr1indicator@teccheck.github.io",
+  "shell-version": [
+    "42"
+  ]
+}
